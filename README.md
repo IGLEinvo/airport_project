@@ -148,6 +148,4 @@ airport_project/
 python manage.py test
 ```
 
-## 📝 Ліцензія
 
-MIT License
