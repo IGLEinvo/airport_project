@@ -9,26 +9,32 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
+import os
 from datetime import timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-wy)sjh=w00gef+60u@7i9(hg+)_o$g7$bjatg8w!(y(wpw%og7'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else []
 
 
-# Список вбудованих джанго програм
+# Django built-in apps
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -39,19 +45,20 @@ DJANGO_APPS = [
     'django.contrib.staticfiles',
 ]
 
-# Список сторонніх програм
-THIRD_PATY_APPS = [
+# Third-party apps
+THIRD_PARTY_APPS = [
     'rest_framework',
     'drf_spectacular',
 ]
 
-# Список локальних програм
+# Local apps
 LOCAL_APPS = [
+    'users',
     'airport',
 ]
 
-# Загальний список
-INSTALLED_APPS = DJANGO_APPS + THIRD_PATY_APPS + LOCAL_APPS
+# Combined list
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -89,15 +96,15 @@ WSGI_APPLICATION = 'airport_config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'airport_db',       
-        'USER': 'postgres',    
-        'PASSWORD': '12345',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.getenv('DB_NAME', 'airport_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
-AUTH_USER_MODEL = 'airport.User'
+AUTH_USER_MODEL = 'users.User'
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 

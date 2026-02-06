@@ -1,10 +1,8 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
-from .models import Country, Airport, Airline, Airplane, Flight, Ticket, User
+from .models import Country, Airport, Airline, Airplane, Flight, Ticket
 
-# Ми використовуємо декоратор @admin.register для кожної моделі
-# Це дозволяє налаштувати відображення колонок у списку
-admin.site.register(User, UserAdmin)
+# Using @admin.register decorator for each model
+# This allows customizing column display in the list view
 
 @admin.register(Country)
 class CountryAdmin(admin.ModelAdmin):

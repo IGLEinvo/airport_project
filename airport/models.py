@@ -1,13 +1,5 @@
 from django.db import models
 from django.conf import settings
-from django.contrib.auth.models import AbstractUser
-
-class User(AbstractUser):
-    is_airport_admin = models.BooleanField(default=False)
-    
-    @property
-    def is_admin(self):
-        return self.is_staff or self.is_airport_admin
 
 class Country(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -40,11 +32,11 @@ class Airplane(models.Model):
     
 class Flight(models.Model):
     class FlightStatus(models.TextChoices):
-        SCHEDULED = 'scheduled', 'Запланований'
-        BOARDING = 'boarding', 'Посадка'
-        DEPARTED = 'departed', 'Вилетів'
-        DELAYED = 'delayed', 'Затриманий'
-        CANCELLED = 'cancelled', 'Відмінений'
+        SCHEDULED = 'scheduled', 'Scheduled'
+        BOARDING = 'boarding', 'Boarding'
+        DEPARTED = 'departed', 'Departed'
+        DELAYED = 'delayed', 'Delayed'
+        CANCELLED = 'cancelled', 'Cancelled'
 
     number = models.CharField(max_length=50, unique=True)
     airplane = models.ForeignKey(Airplane, on_delete=models.CASCADE, related_name='flights')
@@ -61,10 +53,10 @@ class Flight(models.Model):
     
 class Ticket(models.Model):
     class TicketStatus(models.TextChoices):
-        BOOKED = 'booked', 'Заброньований'
-        CANCELLED = 'cancelled', 'Скасований'
-        USED = 'used', 'Використаний'
-        PAID = 'paid', 'Оплачений'
+        BOOKED = 'booked', 'Booked'
+        CANCELLED = 'cancelled', 'Cancelled'
+        USED = 'used', 'Used'
+        PAID = 'paid', 'Paid'
 
     flight = models.ForeignKey(Flight, on_delete=models.CASCADE, related_name='tickets')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tickets')
@@ -76,7 +68,7 @@ class Ticket(models.Model):
     )
 
     class Meta:
-        # Забороняємо два квитки на одне й те саме місце на одному рейсі
+        # Prevent duplicate tickets for the same seat on the same flight
         constraints = [
             models.UniqueConstraint(
                 fields=['flight', 'seat_number'],

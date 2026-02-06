@@ -1,56 +1,56 @@
 # ✈️ Airport API
 
-REST API для системи управління аеропортом — бронювання квитків, управління рейсами, літаками та авіалініями.
+REST API for airport management system — ticket booking, flight management, airplanes, and airlines.
 
-## 🛠 Технології
+## 🛠 Technologies
 
 - **Python 3.12+**
 - **Django 5.2** + **Django REST Framework**
-- **PostgreSQL** — база даних
-- **JWT** (Simple JWT) — авторизація
-- **drf-spectacular** — автогенерація OpenAPI документації
+- **PostgreSQL** — database
+- **JWT** (Simple JWT) — authorization
+- **drf-spectacular** — OpenAPI documentation auto-generation
 
-## 📦 Встановлення
+## 📦 Installation
 
 ```bash
-# Клонування репозиторію
+# Clone repository
 git clone https://github.com/your-username/airport_project.git
 cd airport_project
 
-# Створення віртуального середовища
+# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate   # Windows
 
-# Встановлення залежностей
+# Install dependencies
 pip install -r requirements.txt
 
-# Налаштування бази даних (PostgreSQL)
-# Створіть базу даних 'airport_db' та оновіть credentials в settings.py
+# Configure database (PostgreSQL)
+# Create database 'airport_db' and update credentials in settings.py
 
-# Застосування міграцій
+# Apply migrations
 python manage.py migrate
 
-# Створення суперкористувача
+# Create superuser
 python manage.py createsuperuser
 
-# Запуск сервера
+# Run server
 python manage.py runserver
 ```
 
-## 📊 Моделі даних
+## 📊 Data Models
 
 ```
-Country (Країна)
-    └── Airport (Аеропорт)
-            └── Airline (Авіалінія)
-                    └── Airplane (Літак)
-                            └── Flight (Рейс)
-                                    └── Ticket (Квиток) ← User (Користувач)
+Country
+    └── Airport
+            └── Airline
+                    └── Airplane
+                            └── Flight
+                                    └── Ticket ← User
 ```
 
-| Модель | Поля |
-|--------|------|
+| Model | Fields |
+|--------|---------|
 | `User` | username, email, password, is_airport_admin |
 | `Country` | name |
 | `Airport` | name, code, country |
@@ -59,30 +59,30 @@ Country (Країна)
 | `Flight` | number, airplane, departure_time, arrival_time, status |
 | `Ticket` | flight, user, seat_number, status |
 
-### Статуси рейсів
-- `scheduled` — Запланований
-- `boarding` — Посадка
-- `departed` — Вилетів
-- `delayed` — Затриманий
-- `cancelled` — Відмінений
+### Flight Statuses
+- `scheduled` — Scheduled
+- `boarding` — Boarding
+- `departed` — Departed
+- `delayed` — Delayed
+- `cancelled` — Cancelled
 
-### Статуси квитків
-- `booked` — Заброньований
-- `paid` — Оплачений
-- `used` — Використаний
-- `cancelled` — Скасований
+### Ticket Statuses
+- `booked` — Booked
+- `paid` — Paid
+- `used` — Used
+- `cancelled` — Cancelled
 
-## 🔗 API Ендпоінти
+## 🔗 API Endpoints
 
-### Авторизація
-| Метод | URL | Опис |
-|-------|-----|------|
-| POST | `/api/token/` | Отримати JWT токени |
-| POST | `/api/token/refresh/` | Оновити access токен |
+### Authorization
+| Method | URL | Description |
+|--------|-----|-------------|
+| POST | `/api/token/` | Get JWT tokens |
+| POST | `/api/token/refresh/` | Refresh access token |
 
-### Ресурси
-| Ресурс | URL | Методи |
-|--------|-----|--------|
+### Resources
+| Resource | URL | Methods |
+|----------|-----|---------|
 | Countries | `/api/countries/` | GET, POST, PUT, DELETE |
 | Airports | `/api/airports/` | GET, POST, PUT, DELETE |
 | Airlines | `/api/airlines/` | GET, POST, PUT, DELETE |
@@ -90,64 +90,60 @@ Country (Країна)
 | Flights | `/api/flights/` | GET, POST*, PUT*, DELETE* |
 | Tickets | `/api/tickets/` | GET**, POST**, PUT**, DELETE** |
 
-\* — тільки для адміністраторів  
-\** — потребує авторизації, користувач бачить тільки свої квитки
+\* — admin only  
+\** — requires authorization, users can only see their own tickets
 
-### Документація
+### Documentation
 - **Swagger UI**: http://127.0.0.1:8000/api/docs/
 - **OpenAPI Schema**: http://127.0.0.1:8000/api/schema/
 
-## 🔐 Авторизація
+## 🔐 Authorization
 
-Проєкт використовує JWT токени. Приклад використання:
+The project uses JWT tokens. Usage example:
 
 ```bash
-# Отримання токенів
+# Get tokens
 curl -X POST http://127.0.0.1:8000/api/token/ \
   -H "Content-Type: application/json" \
   -d '{"username": "your_user", "password": "your_password"}'
 
-# Використання токена
+# Use token
 curl http://127.0.0.1:8000/api/tickets/ \
   -H "Authorization: Bearer <your_access_token>"
 ```
 
-## 🔒 Права доступу
+## 🔒 Access Rights
 
-| Ресурс | Читання | Запис |
-|--------|---------|-------|
-| Countries, Airports, Airlines, Airplanes | Всі | Всі |
-| Flights | Всі | Тільки адміни |
-| Tickets | Авторизовані (свої) | Авторизовані (свої) |
+| Resource | Read | Write |
+|----------|------|-------|
+| Countries, Airports, Airlines, Airplanes | All | All |
+| Flights | All | Admin only |
+| Tickets | Authorized (own) | Authorized (own) |
 
-**Важливо**: Одне місце на рейсі може бути заброньоване тільки один раз (унікальне обмеження `flight` + `seat_number`).
+**Important**: Each seat on a flight can only be booked once (unique constraint on `flight` + `seat_number`).
 
-## 📁 Структура проєкту
+## 📁 Project Structure
 
 ```
 airport_project/
-├── airport/                 # Основний додаток
-│   ├── models.py           # Моделі даних
-│   ├── views.py            # ViewSets для API
-│   ├── serializers.py      # Серіалізатори
-│   ├── urls.py             # Роутінг API
-│   ├── permission.py       # Кастомні права доступу
-│   └── admin.py            # Конфігурація адмін-панелі
-├── airport_config/          # Конфігурація Django
-│   ├── settings.py         # Налаштування проєкту
-│   ├── urls.py             # Головний роутінг
-│   └── wsgi.py / asgi.py   # WSGI/ASGI конфігурація
+├── airport/                 # Main application
+│   ├── models.py           # Data models
+│   ├── views.py            # API ViewSets
+│   ├── serializers.py      # Serializers
+│   ├── urls.py             # API routing
+│   ├── permission.py       # Custom permissions
+│   └── admin.py            # Admin panel configuration
+├── airport_config/          # Django configuration
+│   ├── settings.py         # Project settings
+│   ├── urls.py             # Main routing
+│   └── wsgi.py / asgi.py   # WSGI/ASGI configuration
 ├── manage.py
 ├── requirements.txt
 └── README.md
 ```
 
-## 🧪 Тестування
+## 🧪 Testing
 
 ```bash
 python manage.py test
 ```
-
-## 📝 Ліцензія
-
-MIT License
