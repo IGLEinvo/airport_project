@@ -1,15 +1,17 @@
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import Country, Airport, Airline, Airplane, Flight, Ticket
+from .models import Country, Airport, Airline, Airplane, Flight, Order, Ticket
 from .permission import IsAdminOrReadOnly
 from .serializers import (
-    CountrySerializer, 
+    CountrySerializer, CountryDetailSerializer,
     AirportListSerializer, AirportDetailSerializer,
     AirlineSerializer, AirlineDetailSerializer,
-    AirplaneSerializer, 
+    AirplaneSerializer, AirplaneDetailSerializer,
     FlightListSerializer, FlightDetailSerializer,
-    TicketSerializer, TicketDetailSerializer
+    TicketSerializer, TicketDetailSerializer,
+    CreateOrderSerializer, OrderListSerializer, OrderDetailSerializer
 )
 
 
@@ -38,12 +40,12 @@ class CountryListCreateView(generics.GenericAPIView):
 
 class CountryDetailView(generics.GenericAPIView):
     """
-    GET: Retrieve a country
+    GET: Retrieve a country with nested airports
     PUT: Update a country
     DELETE: Delete a country
     """
     queryset = Country.objects.all()
-    serializer_class = CountrySerializer
+    serializer_class = CountryDetailSerializer
 
     def get_object(self):
         pk = self.kwargs.get('pk')
@@ -94,7 +96,11 @@ class AirlineViewSet(viewsets.ModelViewSet):
 
 class AirplaneViewSet(viewsets.ModelViewSet):
     queryset = Airplane.objects.all()
-    serializer_class = AirplaneSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return AirplaneSerializer
+        return AirplaneDetailSerializer
 
 
 # ============ Flight ViewSet with multiple serializers ============
@@ -112,6 +118,116 @@ class FlightViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return FlightListSerializer
         return FlightDetailSerializer
+
+
+# ============ Order ViewSet ============
+
+class OrderViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing orders (ticket bookings).
+    Users can create orders, view their orders, confirm payment, and cancel orders.
+    """
+    queryset = Order.objects.all()
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return OrderListSerializer
+        elif self.action == 'create':
+            return CreateOrderSerializer
+        return OrderDetailSerializer
+
+    def get_queryset(self):
+        # Admin sees all orders, regular users only see their own
+        if self.request.user.is_staff:
+            return Order.objects.all()
+        return Order.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # User ID is taken from token, not provided by the user
+        serializer.save(user=self.request.user)
+
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='confirm'
+    )
+    def confirm_payment(self, request, pk=None):
+        """
+        Confirm payment for an order.
+        Creates a Ticket and changes Order status to 'confirmed'.
+        
+        PATCH /api/orders/{id}/confirm/
+        """
+        from django.utils import timezone
+        from django.db import transaction
+        
+        order = self.get_object()
+        
+        # Validation
+        if order.status != 'pending':
+            return Response(
+                {'error': f'Cannot confirm order with status: {order.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if timezone.now() > order.reserved_until:
+            order.status = 'expired'
+            order.save()
+            return Response(
+                {'error': 'Order reservation has expired'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Transaction to ensure atomicity
+        with transaction.atomic():
+            order.status = 'confirmed'
+            order.save()
+            
+            ticket = Ticket.objects.create(
+                order=order,
+                flight=order.flight,
+                user=order.user,
+                seat_number=order.seat_number,
+                status='active'
+            )
+        
+        return Response(
+            {
+                'message': 'Payment confirmed successfully',
+                'order': OrderDetailSerializer(order).data,
+                'ticket': TicketDetailSerializer(ticket).data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='cancel'
+    )
+    def cancel_order(self, request, pk=None):
+        """
+        Cancel an order (releases the reserved seat).
+        
+        POST /api/orders/{id}/cancel/
+        """
+        order = self.get_object()
+        
+        if order.status not in ['pending', 'paid']:
+            return Response(
+                {'error': f'Cannot cancel order with status: {order.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'cancelled'
+        order.save()
+        
+        return Response(
+            {'message': 'Order cancelled successfully'},
+            status=status.HTTP_200_OK
+        )
 
 
 # ============ Ticket ViewSet with multiple serializers ============

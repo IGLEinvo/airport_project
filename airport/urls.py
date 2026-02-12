@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CountryListCreateView, CountryDetailView,
     AirportViewSet, AirlineViewSet, 
-    AirplaneViewSet, FlightViewSet, TicketViewSet
+    AirplaneViewSet, FlightViewSet, OrderViewSet, TicketViewSet
 )
 
 router = DefaultRouter()
@@ -11,6 +11,7 @@ router.register('airports', AirportViewSet)
 router.register('airlines', AirlineViewSet)
 router.register('airplanes', AirplaneViewSet)
 router.register('flights', FlightViewSet)
+router.register('orders', OrderViewSet)
 router.register('tickets', TicketViewSet)
 
 urlpatterns = [

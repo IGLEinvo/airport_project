@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Country, Airport, Airline, Airplane, Flight, Ticket
+from .models import Country, Airport, Airline, Airplane, Flight, Order, Ticket
 
 # Using @admin.register decorator for each model
 # This allows customizing column display in the list view
@@ -30,7 +30,14 @@ class FlightAdmin(admin.ModelAdmin):
     list_filter = ('status', 'departure_time')
     search_fields = ('number',)
 
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'flight', 'user', 'seat_number', 'price', 'status', 'reserved_until', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('user__username', 'flight__number', 'seat_number')
+    readonly_fields = ('created_at', 'updated_at')
+
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
-    list_display = ('id', 'flight', 'user', 'seat_number', 'status')
+    list_display = ('id', 'order', 'flight', 'user', 'seat_number', 'status')
     list_filter = ('status',)
