@@ -77,6 +77,22 @@ class Order(models.Model):
         default=OrderStatus.PENDING
     )
     reserved_until = models.DateTimeField()
+    
+    # Stripe Payment Integration
+    payment_intent_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Stripe Payment Intent ID"
+    )
+    payment_status = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="Stripe payment status: requires_payment_method, succeeded, etc."
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -32,10 +32,14 @@ class FlightAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'flight', 'user', 'seat_number', 'price', 'status', 'reserved_until', 'created_at')
-    list_filter = ('status', 'created_at')
-    search_fields = ('user__username', 'flight__number', 'seat_number')
-    readonly_fields = ('created_at', 'updated_at')
+    list_display = (
+        'id', 'flight', 'user', 'seat_number', 'price', 
+        'status', 'payment_status', 'payment_intent_id', 
+        'reserved_until', 'created_at'
+    )
+    list_filter = ('status', 'payment_status', 'created_at')
+    search_fields = ('user__username', 'flight__number', 'seat_number', 'payment_intent_id')
+    readonly_fields = ('payment_intent_id', 'payment_status', 'created_at', 'updated_at')
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):

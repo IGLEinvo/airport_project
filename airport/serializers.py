@@ -231,10 +231,13 @@ class CreateOrderSerializer(serializers.ModelSerializer):
     flight_id = serializers.PrimaryKeyRelatedField(
         queryset=Flight.objects.all(), source='flight', write_only=True
     )
+    client_secret = serializers.CharField(read_only=True)
+    payment_intent_id = serializers.CharField(read_only=True)
+    payment_status = serializers.CharField(read_only=True)
     
     class Meta:
         model = Order
-        fields = ('flight_id', 'seat_number', 'price')
+        fields = ('flight_id', 'seat_number', 'price', 'client_secret', 'payment_intent_id', 'payment_status')
         
     def validate_seat_number(self, value):
         """Validate seat format (e.g., 1A, 12B, etc.)"""
@@ -333,20 +336,62 @@ class CreateOrderSerializer(serializers.ModelSerializer):
         
         return attrs
     
+    
     def create(self, validated_data):
-        """Create order with auto-calculated reserved_until"""
+        """Create order with Stripe Payment Intent"""
         from django.db import transaction, IntegrityError
+        from django.conf import settings
+        import stripe
         
         user = self.context['request'].user
         
         # ✅ FIX #3: Wrap in transaction.atomic and handle race conditions
         try:
             with transaction.atomic():
+                # Create order first
                 order = Order.objects.create(
                     user=user,
                     **validated_data
                 )
+                
+                # Create Stripe Payment Intent if Stripe is configured
+                if settings.STRIPE_SECRET_KEY:
+                    try:
+                        payment_intent = stripe.PaymentIntent.create(
+                            amount=int(order.price * 100),  # Convert to cents
+                            currency='usd',
+                            metadata={
+                                'order_id': order.id,
+                                'user_id': user.id,
+                                'user_email': user.email,
+                                'flight_number': order.flight.number,
+                                'seat_number': order.seat_number
+                            },
+                            # Disable redirect-based payment methods to avoid return_url requirement
+                            automatic_payment_methods={
+                                'enabled': True,
+                                'allow_redirects': 'never'
+                            }
+                        )
+                        
+                        # Store payment_intent_id and status
+                        order.payment_intent_id = payment_intent.id
+                        order.payment_status = payment_intent.status
+                        order.save()
+                        
+                        # Attach client_secret for frontend (non-persistent field)
+                        order.client_secret = payment_intent.client_secret
+                        
+                    except stripe.error.StripeError as e:
+                        # If Stripe fails, still allow order creation but log error
+                        print(f"⚠️ Stripe Payment Intent creation failed: {e}")
+                        order.client_secret = None
+                else:
+                    # No Stripe configured - manual payment flow
+                    order.client_secret = None
+                
                 return order
+                
         except IntegrityError as e:
             # Race condition: another user booked the same seat between validate() and create()
             if 'unique_active_seat_per_flight' in str(e):
@@ -368,7 +413,8 @@ class OrderListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'flight', 'flight_number', 'user', 'username',
             'seat_number', 'price', 'status', 'reserved_until',
-            'is_expired', 'time_until_expiry', 'created_at'
+            'is_expired', 'time_until_expiry', 'payment_intent_id', 
+            'payment_status', 'created_at'
         )
     
     def get_is_expired(self, obj):
@@ -396,6 +442,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'flight', 'user', 'user_details', 'seat_number',
             'price', 'status', 'reserved_until', 'is_expired',
+            'payment_intent_id', 'payment_status',
             'ticket', 'created_at', 'updated_at'
         )
     
