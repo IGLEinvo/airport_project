@@ -33,6 +33,14 @@ DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else []
 
+# Allow all ngrok tunnels automatically (for local development / Stripe webhook testing)
+NGROK_URL = os.getenv('NGROK_URL', '')  # e.g. https://abc123.ngrok-free.app
+if NGROK_URL:
+    from urllib.parse import urlparse
+    _ngrok_host = urlparse(NGROK_URL).hostname
+    if _ngrok_host and _ngrok_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_ngrok_host)
+
 
 # Django built-in apps
 
@@ -69,6 +77,12 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Trust ngrok origin for CSRF (needed when testing webhooks / API via ngrok tunnel)
+_csrf_origins = ['http://localhost:8000', 'http://127.0.0.1:8000']
+if NGROK_URL:
+    _csrf_origins.append(NGROK_URL.rstrip('/'))
+CSRF_TRUSTED_ORIGINS = _csrf_origins
 
 ROOT_URLCONF = 'airport_config.urls'
 
