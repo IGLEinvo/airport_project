@@ -145,8 +145,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Order.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        # User ID is taken from token, not provided by the user
-        serializer.save(user=self.request.user)
+        # User is read from context['request'].user inside CreateOrderSerializer.create()
+        serializer.save()
+
 
     @action(
         detail=True,
@@ -228,6 +229,96 @@ class OrderViewSet(viewsets.ModelViewSet):
             {'message': 'Order cancelled successfully'},
             status=status.HTTP_200_OK
         )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='checkout'
+    )
+    def create_checkout_session(self, request, pk=None):
+        """
+        Create a Stripe Checkout Session for an order.
+        Returns a Stripe-hosted payment page URL.
+
+        POST /api/orders/{id}/checkout/
+        Response: { "checkout_url": "https://checkout.stripe.com/c/pay/..." }
+        """
+        import stripe
+        from django.conf import settings as django_settings
+        from django.utils import timezone
+
+        order = self.get_object()
+
+        # Validation
+        if order.status != 'pending':
+            return Response(
+                {'error': f'Cannot create checkout for order with status: {order.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if timezone.now() > order.reserved_until:
+            order.status = 'expired'
+            order.save()
+            return Response(
+                {'error': 'Order reservation has expired'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not django_settings.STRIPE_SECRET_KEY:
+            return Response(
+                {'error': 'Stripe is not configured'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        try:
+            success_url = django_settings.STRIPE_SUCCESS_URL.format(order_id=order.id)
+            cancel_url = django_settings.STRIPE_CANCEL_URL.format(order_id=order.id)
+
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(order.price * 100),  # cents
+                        'product_data': {
+                            'name': f'Flight {order.flight.number} — Seat {order.seat_number}',
+                            'description': (
+                                f'Departure: {order.flight.departure_time.strftime("%Y-%m-%d %H:%M")} UTC'
+                            ),
+                        },
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=success_url,
+                cancel_url=cancel_url,
+                expires_at=int(max(
+                    order.reserved_until,
+                    timezone.now() + __import__('datetime').timedelta(minutes=31)
+                ).timestamp()),  # Stripe requires >= 30 min from now
+                metadata={
+                    'order_id': order.id,
+                    'user_id': order.user.id,
+                    'flight_number': order.flight.number,
+                    'seat_number': order.seat_number,
+                },
+            )
+
+            # Store checkout session id on the order
+            order.payment_intent_id = session.payment_intent or order.payment_intent_id
+            order.save()
+
+            return Response(
+                {'checkout_url': session.url},
+                status=status.HTTP_200_OK
+            )
+
+        except stripe.error.StripeError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 
 # ============ Ticket ViewSet with multiple serializers ============

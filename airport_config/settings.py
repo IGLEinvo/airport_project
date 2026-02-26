@@ -175,6 +175,16 @@ STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
 STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
 
+# Stripe Checkout redirect URLs ({order_id} replaced at runtime)
+STRIPE_SUCCESS_URL = os.getenv(
+    'STRIPE_SUCCESS_URL',
+    'http://localhost:8000/api/orders/{order_id}/?payment=success'
+)
+STRIPE_CANCEL_URL = os.getenv(
+    'STRIPE_CANCEL_URL',
+    'http://localhost:8000/api/orders/{order_id}/?payment=cancelled'
+)
+
 # Initialize Stripe if keys are configured
 if STRIPE_SECRET_KEY:
     import stripe
