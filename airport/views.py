@@ -156,23 +156,22 @@ class OrderViewSet(viewsets.ModelViewSet):
     )
     def confirm_payment(self, request, pk=None):
         """
-        Confirm payment for an order.
-        Creates a Ticket and changes Order status to 'confirmed'.
-        
+        Manually confirm payment for an order.
+        Activates all reserved tickets and changes Order status to 'confirmed'.
+
         PATCH /api/orders/{id}/confirm/
         """
         from django.utils import timezone
         from django.db import transaction
-        
+
         order = self.get_object()
-        
-        # Validation
+
         if order.status != 'pending':
             return Response(
                 {'error': f'Cannot confirm order with status: {order.status}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         if timezone.now() > order.reserved_until:
             order.status = 'expired'
             order.save()
@@ -180,25 +179,18 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {'error': 'Order reservation has expired'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Transaction to ensure atomicity
+
         with transaction.atomic():
             order.status = 'confirmed'
+            order.payment_status = 'succeeded'
             order.save()
-            
-            ticket = Ticket.objects.create(
-                order=order,
-                flight=order.flight,
-                user=order.user,
-                seat_number=order.seat_number,
-                status='active'
-            )
-        
+            # Activate all reserved tickets
+            order.tickets.filter(status='reserved').update(status='active')
+
         return Response(
             {
                 'message': 'Payment confirmed successfully',
                 'order': OrderDetailSerializer(order).data,
-                'ticket': TicketDetailSerializer(ticket).data
             },
             status=status.HTTP_200_OK
         )
@@ -271,42 +263,51 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
         try:
+            import datetime
             success_url = django_settings.STRIPE_SUCCESS_URL.format(order_id=order.id)
             cancel_url = django_settings.STRIPE_CANCEL_URL.format(order_id=order.id)
+            departure = order.flight.departure_time.strftime('%Y-%m-%d %H:%M') + ' UTC'
 
-            session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
-                line_items=[{
+            # Build one line-item per ticket
+            line_items = [
+                {
                     'price_data': {
                         'currency': 'usd',
-                        'unit_amount': int(order.price * 100),  # cents
+                        'unit_amount': int(ticket.price * 100),
                         'product_data': {
-                            'name': f'Flight {order.flight.number} — Seat {order.seat_number}',
-                            'description': (
-                                f'Departure: {order.flight.departure_time.strftime("%Y-%m-%d %H:%M")} UTC'
-                            ),
+                            'name': f'Flight {order.flight.number} — Seat {ticket.seat_number}',
+                            'description': f'Departure: {departure}',
                         },
                     },
                     'quantity': 1,
-                }],
+                }
+                for ticket in order.tickets.all()
+            ]
+
+            seat_list = ', '.join(t.seat_number for t in order.tickets.all())
+
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=line_items,
                 mode='payment',
                 success_url=success_url,
                 cancel_url=cancel_url,
                 expires_at=int(max(
                     order.reserved_until,
-                    timezone.now() + __import__('datetime').timedelta(minutes=31)
-                ).timestamp()),  # Stripe requires >= 30 min from now
+                    timezone.now() + datetime.timedelta(minutes=31)
+                ).timestamp()),
                 metadata={
                     'order_id': order.id,
                     'user_id': order.user.id,
                     'flight_number': order.flight.number,
-                    'seat_number': order.seat_number,
+                    'seats': seat_list,
+                    'ticket_count': order.tickets.count(),
                 },
             )
 
-            # Store checkout session id on the order
-            order.payment_intent_id = session.payment_intent or order.payment_intent_id
-            order.save()
+            if session.payment_intent and not order.payment_intent_id:
+                order.payment_intent_id = session.payment_intent
+                order.save()
 
             return Response(
                 {'checkout_url': session.url},

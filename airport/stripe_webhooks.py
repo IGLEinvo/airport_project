@@ -16,11 +16,11 @@ from django.conf import settings
 from django.db import transaction
 import stripe
 
-from airport.models import Order, Ticket
+from airport.models import Order
 
 
 def _confirm_order(order, order_id):
-    """Shared helper: confirm order and create ticket if not exists."""
+    """Shared helper: confirm order and activate all reserved tickets."""
     if order.status == 'confirmed':
         print(f"ℹ️ Order {order_id} already confirmed, skipping")
         return
@@ -30,17 +30,9 @@ def _confirm_order(order, order_id):
         order.payment_status = 'succeeded'
         order.save()
 
-        if not hasattr(order, 'ticket'):
-            Ticket.objects.create(
-                order=order,
-                flight=order.flight,
-                user=order.user,
-                seat_number=order.seat_number,
-                status='active'
-            )
-            print(f"✅ Order {order_id} confirmed + ticket created")
-        else:
-            print(f"✅ Order {order_id} confirmed (ticket already exists)")
+        activated = order.tickets.filter(status='reserved').update(status='active')
+        print(f"✅ Order {order_id} confirmed + {activated} ticket(s) activated")
+
 
 
 @csrf_exempt

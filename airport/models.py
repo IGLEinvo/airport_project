@@ -3,12 +3,14 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 
+
 class Country(models.Model):
     name = models.CharField(max_length=255, unique=True)
 
     def __str__(self):
         return self.name
-    
+
+
 class Airport(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=255, unique=True)
@@ -17,13 +19,15 @@ class Airport(models.Model):
     def __str__(self):
         return f"{self.name}, ({self.code})"
 
+
 class Airline(models.Model):
     name = models.CharField(max_length=255)
     airport = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name='airlines')
 
     def __str__(self):
         return self.name
-    
+
+
 class Airplane(models.Model):
     name = models.CharField(max_length=255)
     capacity = models.IntegerField()
@@ -31,7 +35,8 @@ class Airplane(models.Model):
 
     def __str__(self):
         return f"{self.name} (Cap: {self.capacity})"
-    
+
+
 class Flight(models.Model):
     class FlightStatus(models.TextChoices):
         SCHEDULED = 'scheduled', 'Scheduled'
@@ -45,8 +50,8 @@ class Flight(models.Model):
     departure_time = models.DateTimeField()
     arrival_time = models.DateTimeField()
     status = models.CharField(
-        max_length=20, 
-        choices=FlightStatus.choices, 
+        max_length=20,
+        choices=FlightStatus.choices,
         default=FlightStatus.SCHEDULED
     )
 
@@ -56,9 +61,9 @@ class Flight(models.Model):
 
 class Order(models.Model):
     """
-    Order for a flight ticket.
-    Created when user wants to book a ticket.
-    Reserves a seat for 15 minutes while waiting for payment confirmation.
+    Order for one or more flight tickets on the same flight.
+    Reserves seats for 15 minutes while waiting for payment confirmation.
+    Tickets are created immediately with status 'reserved' and activated after payment.
     """
     class OrderStatus(models.TextChoices):
         PENDING = 'pending', 'Pending Payment'
@@ -69,15 +74,17 @@ class Order(models.Model):
 
     flight = models.ForeignKey(Flight, on_delete=models.CASCADE, related_name='orders')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='orders')
-    seat_number = models.CharField(max_length=10)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    # Price is the sum of all ticket prices
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
     status = models.CharField(
         max_length=20,
         choices=OrderStatus.choices,
         default=OrderStatus.PENDING
     )
     reserved_until = models.DateTimeField()
-    
+
     # Stripe Payment Integration
     payment_intent_id = models.CharField(
         max_length=255,
@@ -92,22 +99,13 @@ class Order(models.Model):
         default='',
         help_text="Stripe payment status: requires_payment_method, succeeded, etc."
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        # Prevent duplicate orders for the same seat when order is active
-        constraints = [
-            models.UniqueConstraint(
-                fields=['flight', 'seat_number'],
-                condition=models.Q(status__in=['pending', 'paid', 'confirmed']),
-                name='unique_active_seat_per_flight'
-            )
-        ]
-
     def __str__(self):
-        return f"Order {self.id} - {self.user.username} - Seat {self.seat_number} ({self.status})"
+        count = self.tickets.count() if self.pk else 0
+        return f"Order {self.id} - {self.user.username} - {count} ticket(s) ({self.status})"
 
     def save(self, *args, **kwargs):
         # Auto-set reserved_until to 15 minutes from now if not set
@@ -122,32 +120,36 @@ class Order(models.Model):
 
 class Ticket(models.Model):
     """
-    Actual ticket created after order is confirmed/paid.
-    One ticket per order.
+    Individual ticket for a specific seat on a flight.
+    Multiple tickets can belong to one Order.
+    Created with 'reserved' status and activated to 'active' after payment.
     """
     class TicketStatus(models.TextChoices):
-        ACTIVE = 'active', 'Active'
+        RESERVED = 'reserved', 'Reserved'    # seat held, awaiting payment
+        ACTIVE = 'active', 'Active'          # payment confirmed
         USED = 'used', 'Used'
         CANCELLED = 'cancelled', 'Cancelled'
 
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='ticket')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='tickets')
     flight = models.ForeignKey(Flight, on_delete=models.CASCADE, related_name='tickets')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tickets')
     seat_number = models.CharField(max_length=10)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(
         max_length=20,
         choices=TicketStatus.choices,
-        default=TicketStatus.ACTIVE
+        default=TicketStatus.RESERVED
     )
 
     class Meta:
-        # Prevent duplicate tickets for the same seat on the same flight
         constraints = [
+            # No two active/reserved tickets for the same seat on the same flight
             models.UniqueConstraint(
                 fields=['flight', 'seat_number'],
-                name='unique_seat_per_flight'
+                condition=models.Q(status__in=['reserved', 'active']),
+                name='unique_active_seat_per_flight'
             )
         ]
 
     def __str__(self):
-        return f"Ticket {self.id} for {self.user.username} - Seat {self.seat_number}"
+        return f"Ticket {self.id} for {self.user.username} - Seat {self.seat_number} ({self.status})"
