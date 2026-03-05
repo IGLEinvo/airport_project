@@ -28,9 +28,18 @@ class AirplaneAdmin(admin.ModelAdmin):
 
 @admin.register(Flight)
 class FlightAdmin(admin.ModelAdmin):
-    list_display = ('number', 'airplane', 'departure_time', 'status')
+    list_display = ('number', 'airplane', 'departure_time', 'status', 'price', 'tickets_sold', 'tickets_available')
     list_filter = ('status', 'departure_time')
     search_fields = ('number',)
+
+    def tickets_sold(self, obj):
+        return obj.tickets.filter(status='active').count()
+    tickets_sold.short_description = 'Sold'
+
+    def tickets_available(self, obj):
+        occupied = obj.tickets.filter(status__in=['reserved', 'active']).count()
+        return obj.airplane.capacity - occupied
+    tickets_available.short_description = 'Available'
 
 
 @admin.register(Order)

@@ -54,6 +54,11 @@ class Flight(models.Model):
         choices=FlightStatus.choices,
         default=FlightStatus.SCHEDULED
     )
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text='Base ticket price for this flight'
+    )
 
     def __str__(self):
         return f"Flight {self.number} - {self.status}"

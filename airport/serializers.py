@@ -142,13 +142,14 @@ class FlightListSerializer(serializers.ModelSerializer):
     airline_name = serializers.CharField(source='airplane.airline.name', read_only=True)
     tickets_sold = serializers.SerializerMethodField()
     tickets_available = serializers.SerializerMethodField()
+    capacity = serializers.IntegerField(source='airplane.capacity', read_only=True)
 
     class Meta:
         model = Flight
         fields = (
             'id', 'number', 'airplane', 'airplane_name', 'airline_name',
-            'departure_time', 'arrival_time', 'status',
-            'tickets_sold', 'tickets_available'
+            'departure_time', 'arrival_time', 'status', 'price',
+            'capacity', 'tickets_sold', 'tickets_available'
         )
 
     def get_tickets_sold(self, obj):
@@ -178,7 +179,7 @@ class FlightDetailSerializer(serializers.ModelSerializer):
         model = Flight
         fields = (
             'id', 'number', 'airplane', 'airplane_id',
-            'departure_time', 'arrival_time', 'status',
+            'departure_time', 'arrival_time', 'status', 'price',
             'airline', 'capacity', 'tickets_sold', 'tickets_available',
             'tickets'
         )
@@ -238,9 +239,13 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 # ============ Nested Ticket Input Serializer ============
 
 class TicketInputSerializer(serializers.Serializer):
-    """Used inside CreateOrderSerializer to accept a list of tickets"""
+    """Used inside CreateOrderSerializer to accept a list of tickets.
+    Price is optional — defaults to flight.price if not provided.
+    """
     seat_number = serializers.CharField(max_length=10)
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=0, required=False
+    )
 
     def validate_seat_number(self, value):
         import re
@@ -360,6 +365,12 @@ class CreateOrderSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         flight = validated_data['flight']
         tickets_input = validated_data['tickets']
+
+        # Default ticket price to flight.price if not explicitly provided
+        for t in tickets_input:
+            if 'price' not in t or t['price'] is None:
+                t['price'] = flight.price
+
         total_price = sum(t['price'] for t in tickets_input)
 
         try:
